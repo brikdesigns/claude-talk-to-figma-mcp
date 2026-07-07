@@ -5227,7 +5227,15 @@ async function getVariables() {
     });
   }
 
-  return { collections: result };
+  // Brik fork: surface the file identity so the portal's per-client brand-kit
+  // re-sync guard (brik-client-portal#1497/#1818) can verify a pull came from
+  // the client's mapped Figma file — refusing a cross-client write instead of
+  // degrading to a warning. Requires enablePrivatePluginApi (set in manifest).
+  return {
+    collections: result,
+    fileKey: figma.fileKey || null,
+    fileName: (figma.root && figma.root.name) || null,
+  };
 }
 
 // Create or update a variable
