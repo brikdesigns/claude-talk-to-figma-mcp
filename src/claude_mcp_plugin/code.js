@@ -5298,22 +5298,60 @@ async function setVariable(params) {
   // Attempt to parse value based on resolvedType if it's a string (MCP/WS serialization fix)
   let finalValue = value;
   if (typeof value === "string") {
-    if (resolvedType === "FLOAT") {
+    if (value.startsWith("{")) {
+      // Stringified object — a COLOR {r,g,b,a} or a VARIABLE_ALIAS binding
+      try {
+        finalValue = JSON.parse(value);
+      } catch (e) {
+        // Fallback to original value if parsing fails
+      }
+    } else if (resolvedType === "FLOAT") {
       const parsed = parseFloat(value);
       if (!isNaN(parsed)) finalValue = parsed;
     } else if (resolvedType === "BOOLEAN") {
       if (value.toLowerCase() === "true") finalValue = true;
       if (value.toLowerCase() === "false") finalValue = false;
-    } else if (resolvedType === "COLOR") {
-      try {
-        // Try to parse JSON if it's a stringified object
-        if (value.startsWith("{")) {
-          finalValue = JSON.parse(value);
-        }
-      } catch (e) {
-        // Fallback to original value if parsing fails
-      }
     }
+  }
+
+  // Brik fork (brik-bds#1219): resolve an alias value → a VARIABLE_ALIAS binding
+  // so semantic tokens can be Figma-sourced aliases to primitives instead of raw
+  // colors. Accepts { type: "VARIABLE_ALIAS", id } or { type: "VARIABLE_ALIAS",
+  // name } — the name form resolves to a local variable of matching resolvedType.
+  if (finalValue && typeof finalValue === "object" && finalValue.type === "VARIABLE_ALIAS") {
+    let target = null;
+    if (finalValue.id) {
+      target = await figma.variables.getVariableByIdAsync(finalValue.id);
+      if (!target) {
+        throw new Error("Alias target variable not found by id: " + finalValue.id);
+      }
+    } else if (finalValue.name) {
+      const candidates = await figma.variables.getLocalVariablesAsync(resolvedType);
+      const matches = candidates.filter(v => v.name === finalValue.name);
+      if (matches.length === 0) {
+        throw new Error("Alias target variable not found by name: " + finalValue.name);
+      }
+      if (matches.length > 1) {
+        throw new Error("Alias target name is ambiguous (" + matches.length + " matches): " + finalValue.name);
+      }
+      target = matches[0];
+    } else {
+      throw new Error("VARIABLE_ALIAS value requires an 'id' or 'name'");
+    }
+    if (target.resolvedType !== resolvedType) {
+      throw new Error(
+        "Alias target resolvedType (" + target.resolvedType + ") does not match variable resolvedType (" + resolvedType + ")"
+      );
+    }
+    variable.setValueForMode(targetModeId, figma.variables.createVariableAlias(target));
+    return {
+      variableId: variable.id,
+      variableName: variable.name,
+      collectionId: collection.id,
+      collectionName: collection.name,
+      resolvedType: variable.resolvedType,
+      value: { type: "VARIABLE_ALIAS", id: target.id, name: target.name }
+    };
   }
 
   // Validate value type matches resolvedType
