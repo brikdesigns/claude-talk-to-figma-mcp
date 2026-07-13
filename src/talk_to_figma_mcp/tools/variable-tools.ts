@@ -47,7 +47,7 @@ export function registerVariableTools(server: McpServer): void {
       collectionName: z.string().optional().describe("Name for a new collection (used if collectionId not provided)"),
       name: z.string().describe("Variable name"),
       resolvedType: z.enum(["COLOR", "FLOAT", "STRING", "BOOLEAN"]).describe("Variable type"),
-      value: z.any().describe("Variable value. COLOR: {r,g,b,a} (0-1). FLOAT: number. STRING: string. BOOLEAN: boolean. ALIAS: {type:'VARIABLE_ALIAS', id|name} to bind this variable to another (name resolves to a local variable of matching resolvedType)."),
+      value: z.any().describe("Variable value. COLOR: {r,g,b,a} (0-1). FLOAT: number. STRING: string. BOOLEAN: boolean. ALIAS: {type:'VARIABLE_ALIAS', id|name} to bind this variable to another (name resolves to a local variable of matching resolvedType, or an enabled team-library variable, which is imported automatically)."),
       modeId: z.string().optional().describe("Mode ID to set the value for (uses default mode if omitted)"),
     },
     async ({ collectionId, collectionName, name, resolvedType, value, modeId }) => {

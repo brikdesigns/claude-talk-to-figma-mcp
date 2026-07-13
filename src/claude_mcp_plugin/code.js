@@ -5238,6 +5238,51 @@ async function getVariables() {
   };
 }
 
+// Brik fork (brik-bds#1219): resolve an alias target variable by name — first
+// among LOCAL variables, then (for cross-library aliases like a brand kit
+// referencing a Foundations primitive such as color/system/*) among ENABLED
+// team-library variables, importing the match so it can be aliased. Filtered
+// and disambiguated by resolvedType so status colors don't collide with brand
+// ramps of the same name segment.
+async function resolveAliasTargetByName(name, resolvedType) {
+  const local = (await figma.variables.getLocalVariablesAsync(resolvedType)).filter(
+    v => v.name === name
+  );
+  if (local.length > 1) {
+    throw new Error("Alias target name is ambiguous locally (" + local.length + " matches): " + name);
+  }
+  if (local.length === 1) {
+    return local[0];
+  }
+
+  // Not local — search enabled team libraries (requires the "teamlibrary"
+  // manifest permission, already granted).
+  if (!figma.teamLibrary || !figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync) {
+    throw new Error(
+      "Alias target variable not found by name: " + name + " (team-library API unavailable)"
+    );
+  }
+  const libCollections = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+  const libMatches = [];
+  for (const lc of libCollections) {
+    const vars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(lc.key);
+    for (const lv of vars) {
+      if (lv.name === name && lv.resolvedType === resolvedType) {
+        libMatches.push(lv);
+      }
+    }
+  }
+  if (libMatches.length === 0) {
+    throw new Error("Alias target variable not found by name (local or enabled libraries): " + name);
+  }
+  if (libMatches.length > 1) {
+    throw new Error(
+      "Alias target name is ambiguous across libraries (" + libMatches.length + " matches): " + name
+    );
+  }
+  return await figma.variables.importVariableByKeyAsync(libMatches[0].key);
+}
+
 // Create or update a variable
 async function setVariable(params) {
   const { collectionId, collectionName, name, resolvedType, value, modeId } = params || {};
@@ -5326,15 +5371,7 @@ async function setVariable(params) {
         throw new Error("Alias target variable not found by id: " + finalValue.id);
       }
     } else if (finalValue.name) {
-      const candidates = await figma.variables.getLocalVariablesAsync(resolvedType);
-      const matches = candidates.filter(v => v.name === finalValue.name);
-      if (matches.length === 0) {
-        throw new Error("Alias target variable not found by name: " + finalValue.name);
-      }
-      if (matches.length > 1) {
-        throw new Error("Alias target name is ambiguous (" + matches.length + " matches): " + finalValue.name);
-      }
-      target = matches[0];
+      target = await resolveAliasTargetByName(finalValue.name, resolvedType);
     } else {
       throw new Error("VARIABLE_ALIAS value requires an 'id' or 'name'");
     }
