@@ -508,8 +508,9 @@ function handleConnection(ws: ServerWebSocket<any>) {
 
 const server = Bun.serve({
   port: 3055,
-  // uncomment this to allow connections in windows wsl
-  // hostname: "0.0.0.0",
+  // Bun binds every interface by default. All clients connect to ws://localhost,
+  // so keep the relay off the LAN. Use "0.0.0.0" only for windows wsl.
+  hostname: "127.0.0.1",
   fetch(req: Request, server: Server) {
     const url = new URL(req.url);
 
